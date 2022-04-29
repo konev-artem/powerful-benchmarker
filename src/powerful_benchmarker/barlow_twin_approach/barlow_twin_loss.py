@@ -30,17 +30,20 @@ class BarlowTwinLossAndTripletMarginLoss(BaseMetricLossFunction):
         self.triplets_per_anchor = triplets_per_anchor
         self.add_to_recordable_attributes(list_of_names=["margin"], is_stat=False)
         #my_changes 128 is embeding size
-        self.bn = torch.nn.BatchNorm1d(128, affine=False)
-        
-        print('I am here ')
+        #self.bn = torch.nn.BatchNorm1d(128, affine=False)
+        self.bn = None
 
     def off_diagonal(x):
         # return a flattened view of the off-diagonal elements of a square matrix
         n, m = x.shape
         assert n == m
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
-        
+
     def compute_loss(self, embeddings, labels, indices_tuple):
+
+        if self.bn is None:
+          self.bn = torch.nn.BatchNorm1d(embeddings.shape[-1], affine=False, device = embeddings.get_device())
+
         indices_tuple = lmu.convert_to_triplets(indices_tuple, labels, t_per_anchor=self.triplets_per_anchor)
         anchor_idx, positive_idx, negative_idx = indices_tuple
         if len(anchor_idx) == 0:
@@ -51,38 +54,37 @@ class BarlowTwinLossAndTripletMarginLoss(BaseMetricLossFunction):
         if self.swap:
             pn_dists = mat[positive_idx, negative_idx]
             an_dists = self.distance.smallest_dist(an_dists, pn_dists)
-        
+
         current_margins = self.distance.margin(an_dists, ap_dists)
         if self.smooth_loss:
             loss = torch.log(1 + torch.exp(-current_margins))
         else:
             loss = torch.nn.functional.relu(-current_margins + self.margin)
-        
 
         z1 = embeddings[::2]
         z2 = embeddings[1:][::2]
-      
+
         # empirical cross-correlation matrix
 
         c = self.bn(z1).T @ self.bn(z2)
 
         # sum the cross-correlation matrix between all gpus
         #my_changes
-        #c.div_(self.args.batch_size) 
+        #c.div_(self.args.batch_size)
         c.div_(256)
         #my_changes
         #torch.distributed.all_reduce(c)
 
         on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-        #my_changes 
+        #my_changes
         #off_diag = self.off_diagonal(c).pow_(2).sum()
         n, m = c.shape
         assert n == m
         off_diag = c.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
         off_diag = off_diag.pow_(2).sum()
 
-        #my_changes 
-        lambd = 1e-2
+        #my_changes
+        lambd = 1e-1
 
         loss_barlow_twins = on_diag + lambd * off_diag
         return {"loss": {"losses": 0*loss + loss_barlow_twins, "indices": indices_tuple, "reduction_type": "triplet"}}

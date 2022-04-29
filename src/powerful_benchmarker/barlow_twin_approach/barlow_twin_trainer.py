@@ -1,6 +1,6 @@
 from pytorch_metric_learning.trainers.base_trainer import BaseTrainer
 from pytorch_metric_learning.trainers.metric_loss_only import MetricLossOnly
-import torch 
+import torch
 
 import torchvision.transforms as transforms
 from PIL import Image, ImageOps, ImageFilter
@@ -69,7 +69,7 @@ class Transform:
         y1 = self.transform(x)
         y2 = self.transform_prime(x)
         return y1, y2
-        
+
 
 class BarlowTwinTrainer(MetricLossOnly):
     def __init__(self, *args, **kwargs):
@@ -77,13 +77,13 @@ class BarlowTwinTrainer(MetricLossOnly):
         self.barlow_twin_transfrom = Transform()
         self.collate_fn = self.custom_collate_fn
         self.initialize_dataloader()
-
+        print('I am here in the trainer')
     def custom_collate_fn(self, data):
         transformed_data, labels = [], []
         for i, d in enumerate(data):
 
             img, img_label = self.data_and_label_getter(d)
-            
+
             img1, img2 = self.barlow_twin_transfrom(img)
 
             transformed_data.append(img1)
